@@ -1,0 +1,41 @@
+
+{
+  "events": [
+    {
+      "id": "evt001",
+      "name": "SynthWave Live Festival",
+      "type": "Music",
+      "date": "2025-10-15",
+      "location": "Cyber Arena, Neo-City",
+      "price": 50,
+      "tickets_available": 1000
+    },
+    {
+      "id": "evt002",
+      "name": "Future of AI Conference",
+      "type": "Tech Conference",
+      "date": "2025-11-20",
+      "location": "Innovation Hall, Silicon Valley",
+      "price": 250,
+      "tickets_available": 500
+    },
+    {
+      "id": "evt003",
+      "name": "Gourmet Food Fair",
+      "type": "Food",
+      "date": "2025-10-18",
+      "location": "Central Park, Metropolis",
+      "price": 25,
+      "tickets_available": 2000
+    },
+    {
+      "id": "evt004",
+      "name": "Starlight Cinema Marathon",
+      "type": "Movie",
+      "date": "2025-10-25",
+      "location": "Open Air Theatre, Star Valley",
+      "price": 15,
+      "tickets_available": 300
+    }
+  ]
+}
