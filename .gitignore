@@ -27,3 +27,7 @@ backend/tickets.json
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+
+bookings.json
+backend/knowledge_base.json

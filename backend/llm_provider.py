@@ -3,6 +3,7 @@ import aiohttp
 import asyncio
 from typing import List, Dict, Optional
 import google.generativeai as genai
+import json
 
 # Configuration
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")  # "ollama" or "gemini"
@@ -36,15 +37,17 @@ class LLMProvider:
         if self.session and not self.session.closed:
             await self.session.close()
     
-    async def generate(self, messages: List[Dict], max_tokens: int = 150) -> str:
-        """Generate response from LLM."""
+    async def generate(self, messages: List[Dict], max_tokens: int = 150):
+        """Generate response from LLM with streaming."""
         if self.provider == "gemini":
-            return await self._generate_gemini(messages, max_tokens)
+            async for chunk in self._generate_gemini(messages, max_tokens):
+                yield chunk
         else:
-            return await self._generate_ollama(messages, max_tokens)
+            async for chunk in self._generate_ollama(messages, max_tokens):
+                yield chunk
     
-    async def _generate_ollama(self, messages: List[Dict], max_tokens: int) -> str:
-        """Generate using Ollama."""
+    async def _generate_ollama(self, messages: List[Dict], max_tokens: int):
+        """Generate using Ollama with streaming."""
         if not self.session:
             await self.initialize()
         
@@ -52,7 +55,7 @@ class LLMProvider:
             payload = {
                 "model": OLLAMA_MODEL,
                 "messages": messages,
-                "stream": False,
+                "stream": True,  # Enable streaming
                 "options": {
                     "temperature": 0.7,
                     "num_predict": max_tokens
@@ -65,26 +68,38 @@ class LLMProvider:
                 timeout=aiohttp.ClientTimeout(total=30)
             ) as response:
                 if response.status == 200:
-                    result = await response.json()
-                    return result['message']['content'].strip()
+                    async for chunk in response.content.iter_any():
+                        # Ollama sends JSON objects per chunk
+                        try:
+                            data = chunk.decode('utf-8')
+                            # Each chunk might contain multiple JSON objects or partial ones
+                            for line in data.splitlines():
+                                if line.strip():
+                                    json_data = json.loads(line)
+                                    if "content" in json_data['message']:
+                                        yield json_data['message']['content']
+                        except json.JSONDecodeError:
+                            # Handle incomplete JSON objects or non-JSON data
+                            pass
                 else:
                     error_text = await response.text()
                     print(f"Ollama API error: {response.status} - {error_text}")
-                    return "I'm having trouble thinking right now. Could you try again?"
+                    yield "I'm having trouble thinking right now. Could you try again?"
         
         except asyncio.TimeoutError:
-            return "Sorry, I'm taking too long to respond. Please try again."
+            yield "Sorry, I'm taking too long to respond. Please try again."
         except aiohttp.ClientConnectorError:
             print("Cannot connect to Ollama")
-            return "I can't connect to my brain right now. Please check if Ollama is running."
+            yield "I can't connect to my brain right now. Please check if Ollama is running."
         except Exception as e:
             print(f"Ollama error: {e}")
-            return "I encountered an error. Please try again."
+            yield "I encountered an error. Please try again."
     
-    async def _generate_gemini(self, messages: List[Dict], max_tokens: int) -> str:
-        """Generate using Gemini."""
+    async def _generate_gemini(self, messages: List[Dict], max_tokens: int):
+        """Generate using Gemini with streaming."""
         if not self.gemini_model:
-            return "Gemini API not configured. Please set GEMINI_API_KEY."
+            yield "Gemini API not configured. Please set GEMINI_API_KEY."
+            return
         
         try:
             # Convert messages to Gemini format
@@ -105,21 +120,24 @@ class LLMProvider:
             # Get last user message
             last_message = gemini_messages[-1]["parts"][0] if gemini_messages else ""
             
-            # Generate response
-            response = await asyncio.to_thread(
+            # Generate response with streaming
+            response_stream = await asyncio.to_thread(
                 chat.send_message,
                 last_message,
                 generation_config=genai.types.GenerationConfig(
                     max_output_tokens=max_tokens,
                     temperature=0.7
-                )
+                ),
+                stream=True
             )
             
-            return response.text.strip()
+            for chunk in response_stream:
+                if chunk.text:
+                    yield chunk.text
         
         except Exception as e:
             print(f"Gemini error: {e}")
-            return "I encountered an error with Gemini. Please try again."
+            yield "I encountered an error with Gemini. Please try again."
 
 # Global instance
 llm_provider = LLMProvider()

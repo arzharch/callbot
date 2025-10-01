@@ -1,4 +1,4 @@
-BURRAA CATALOG â€” Activities, Events & Dining (Trieve-ready, no links)
+BURRAA CATALOG - Activities, Events & Dining (Trieve-ready, no links)
 Updated: 2025-09-05 13:46:58 IST
 Format: plain-text records separated by a dashed line.
 Fields: Type | Name | Location | Date/Days | Time | Price | Description
@@ -20,19 +20,19 @@ Price: ₹699 (was ₹799)
 Description: Premium river cruise timed to sunset with music/ambience.
 --------------------------------------------------------------------------------
 Type: Activity
-Name: ATV Thrill: Offâ€‘Road Action
+Name: ATV Thrill: Off-Road Action
 Location: Bicholim, Goa
 Date/Days: Daily
 Time: Multiple batches
 Price: ₹1599 (was ₹1899)
-Description: Guided ATV ride on offâ€‘road tracks; gear and briefing included.
+Description: Guided ATV ride on off-road tracks; gear and briefing included.
 --------------------------------------------------------------------------------
 Type: Activity
 Name: Paradise Dinner Cruise
 Location: Mandovi River, Goa
 Date/Days: Selected days
 Time: Dinner sailing
-Price: ₹ â€” onwards
+Price: ₹ - 
 Description: Scenic dinner cruise with onboard dining and views.
 --------------------------------------------------------------------------------
 Type: Activity
@@ -40,7 +40,7 @@ Name: Secret Food Tavern Trail (Panjim)
 Location: Panjim, Goa
 Date/Days: Selected days
 Time: Approx. 3 hours
-Price: ₹ â€”
+Price: ₹ -
 Description: Guided culinary walk through historic taverns and eateries.
 --------------------------------------------------------------------------------
 Type: Activity
@@ -56,39 +56,39 @@ Name: Margao City Food Trail
 Location: Margao (Comba), Goa
 Date/Days: Selected days
 Time: Approx. 3 hours
-Price: ₹ â€”
+Price: ₹ -
 Description: Culinary trail across heritage lanes and local favorites.
 --------------------------------------------------------------------------------
 Type: Activity
 Name: Water Sports Combo (Jet Boat, Jet Ski, Bumper)
 Location: Himachal Pradesh
-Date/Days: Daily (weatherâ€‘dependent)
+Date/Days: Daily (weather-dependent)
 Time: Operator slots
-Price: ₹ â€”
-Description: Highâ€‘speed water sports bundle; weather and river flow dependent.
+Price: ₹ -
+Description: High-speed water sports bundle; weather and river flow dependent.
 --------------------------------------------------------------------------------
 Type: Activity
 Name: Fly Dining (Sky Dining)
 Location: Manali, Himachal Pradesh
 Date/Days: Daily
 Time: Multiple seatings
-Price: ₹ â€”
+Price: ₹ -
 Description: Elevated dining platform ~160 ft for panoramic mountain views.
 --------------------------------------------------------------------------------
 Type: Activity
-Name: SkyMax Lounge â€” Sky Dining
+Name: SkyMax Lounge - Sky Dining
 Location: Rishikesh, Uttarakhand
 Date/Days: Daily
 Time: Multiple seatings
-Price: ₹ â€”
+Price: ₹ -
 Description: Sky dining above the Ganga with scenic valley views.
 --------------------------------------------------------------------------------
 Type: Activity
-Name: Sky Dining â€” Aamby Valley
+Name: Sky Dining - Aamby Valley
 Location: Aamby Valley City, Maharashtra
 Date/Days: Daily
 Time: Multiple seatings
-Price: ₹ â€”
+Price: ₹ -
 Description: Sky dining experience; entry/escort for Aamby Valley included.
 --------------------------------------------------------------------------------
 Type: Activity
@@ -96,7 +96,7 @@ Name: Orlando & Miami Adventure (5N/6D)
 Location: USA (Orlando & Miami)
 Date/Days: Fixed itinerary
 Time: Per itinerary
-Price: ₹ â€”
+Price: ₹ -
 Description: Themed parks + Everglades airboat + coastal cruise across 6 days.
 --------------------------------------------------------------------------------
 Type: Event
@@ -104,7 +104,7 @@ Name: Saturday Night Fever at Copa Cabana
 Location: Cavelossim, Goa
 Date/Days: Saturdays
 Time: Night
-Price: ₹ â€”
+Price: ₹ -
 Description: Party night with live band (NEON) and DJ performances.
 --------------------------------------------------------------------------------
 Type: Event
@@ -112,7 +112,7 @@ Name: Copa Nights Jam
 Location: Cavelossim, Goa
 Date/Days: Selected nights
 Time: Evening/Night
-Price: ₹ â€”
+Price: ₹ -
 Description: Live music jam session; social evening vibe.
 --------------------------------------------------------------------------------
 Type: Event
@@ -120,7 +120,7 @@ Name: Rockfest Mayhem II at Bay 15
 Location: Dona Paula, Goa
 Date/Days: Event date TBA
 Time: Concert night
-Price: ₹ â€”
+Price: ₹ -
 Description: Rock concert featuring Girish and The Chronicles (GATC).
 --------------------------------------------------------------------------------
 Type: Event
@@ -128,7 +128,7 @@ Name: Vamos Goa Super Yacht Opening Party
 Location: Goa (Yacht)
 Date/Days: Opening event
 Time: 4 hours
-Price: ₹ â€”
+Price: ₹ -
 Description: Cruise party with dance floors (Kizomba/Salsa/Bachata) and DJ.
 --------------------------------------------------------------------------------
 Type: Event
@@ -136,7 +136,7 @@ Name: Garba & Dandiya Workshop 5.0
 Location: The Playce, Mapusa, Goa
 Date/Days: Workshop run
 Time: Instructor batches
-Price: ₹ â€”
+Price: ₹ -
 Description: Learn classic and modern Garba/Dandiya routines with mentors.
 --------------------------------------------------------------------------------
 Type: Event
@@ -144,31 +144,31 @@ Name: Onam Mic at Cardamom Kerala
 Location: Candolim, Goa
 Date/Days: Onam period
 Time: From 6:00 PM onwards
-Price: ₹ â€”
+Price: ₹ -
 Description: Open mic, games and traditional Sadhya dinner experience.
 --------------------------------------------------------------------------------
 Type: Event
-Name: Dough It Yourself â€” Pizza Making Workshop
+Name: Dough It Yourself - Pizza Making Workshop
 Location: Calangute, Goa
 Date/Days: Selected days
 Time: Workshop sessions
-Price: ₹ â€”
-Description: Handsâ€‘on Neapolitan pizza making with guidance and tastings.
+Price: ₹ -
+Description: Hands-on Neapolitan pizza making with guidance and tastings.
 --------------------------------------------------------------------------------
 Type: Event
-Name: Plateaunica 2025 â€” Goa University Fest
+Name: Plateaunica 2025 - Goa University Fest
 Location: Goa University, Goa
-Date/Days: 27â€“28 March 2025
+Date/Days: 27-28 March 2025
 Time: Per event schedule
-Price: ₹ â€”
-Description: Interâ€‘collegiate festival with multiple cultural and sports events.
+Price: ₹ -
+Description: Inter-collegiate festival with multiple cultural and sports events.
 --------------------------------------------------------------------------------
 Type: Dining
 Name: Inara
 Location: Goa
 Date/Days: Open daily
 Time: Restaurant hours
-Price: â€”
+Price: -
 Description: Modern dining with regional/global influences.
 --------------------------------------------------------------------------------
 Type: Dining
@@ -176,7 +176,7 @@ Name: Fe's Deli Cafe
 Location: Goa
 Date/Days: Open daily
 Time: Cafe hours
-Price: â€”
+Price: -
 Description: Casual cafe serving deli classics and beverages.
 --------------------------------------------------------------------------------
 Type: Dining
@@ -184,15 +184,15 @@ Name: Pegs & Grills
 Location: Goa
 Date/Days: Open daily
 Time: Restaurant hours
-Price: â€”
-Description: Grillâ€‘forward menu with bar bites and mains.
+Price: -
+Description: Grill-forward menu with bar bites and mains.
 --------------------------------------------------------------------------------
 Type: Dining
 Name: Te Fitti Cafe
 Location: Goa
 Date/Days: Open daily
 Time: Cafe hours
-Price: â€”
+Price: -
 Description: Cafe offerings including coffees, light bites and desserts.
 --------------------------------------------------------------------------------
 Type: Dining
@@ -200,31 +200,31 @@ Name: O'Poder Express Kitchen
 Location: Goa
 Date/Days: Open daily
 Time: Restaurant hours
-Price: â€”
-Description: Quickâ€‘serve Goan/Indian comfort dishes.
+Price: -
+Description: Quick-serve Goan/Indian comfort dishes.
 --------------------------------------------------------------------------------
 Type: Dining
 Name: Horse Shoe Bar & Restaurant
 Location: Goa
 Date/Days: Open daily
 Time: Restaurant hours
-Price: â€”
-Description: Classic bar & restaurant ambience with multiâ€‘cuisine menu.
+Price: -
+Description: Classic bar & restaurant ambience with multi-cuisine menu.
 --------------------------------------------------------------------------------
 Type: Dining
 Name: Poseidon's Cove
 Location: Goa
 Date/Days: Open daily
 Time: Restaurant hours
-Price: â€”
-Description: Seafoodâ€‘leaning menu with coastal flavors.
+Price: not applicable
+Description: Seafood leaning menu with coastal flavors.
 --------------------------------------------------------------------------------
 Type: Dining
 Name: Miri | Global Fusion Dining
 Location: Goa
 Date/Days: Open daily
 Time: Restaurant hours
-Price: â€”
+Price: not applicable
 Description: Global fusion cuisine in a contemporary setting.
 --------------------------------------------------------------------------------
 Type: Dining Event
@@ -232,5 +232,5 @@ Name: Pizza & Pasta Night at Fiturr
 Location: Anjuna, Goa
 Date/Days: Event night(s)
 Time: Till 4:00 AM
-Price: ₹ â€”
-Description: Lateâ€‘night Italian theme with live acts, karaoke and open mic.
+Price: not applicable
+Description: Late night Italian theme with live acts, karaoke and open mic.

@@ -8,23 +8,23 @@ from llm_provider import llm_provider
 from tools import book_ticket, cancel_ticket, get_my_tickets, format_event_brief
 
 # System prompt for the AI
-SYSTEM_PROMPT = """You are Burraa's friendly event assistant. Keep responses natural and conversational (2-3 sentences max).
+SYSTEM_PROMPT = """You are Burraa's friendly and efficient event assistant. Your primary goal is to provide clear, precise, and helpful responses, always prioritizing the user's query and the provided context.
 
 Guidelines:
-- Be casual and human-like ("Sure thing!", "Let me check that out", "Hmm, interesting")
-- Use the context and search results provided to answer accurately
-- If asked about price/details of "that event" or "it", check the context for recently mentioned events
-- For booking confirmations, be enthusiastic but brief
-- If unsure, ask for clarification naturally
-- Never make up event details - only use provided information
-- Keep it short and sweet - users prefer quick replies
+- Maintain a natural, conversational, and human-like tone (e.g., "Sure thing!", "Let me check that out", "Hmm, interesting").
+- **Crucially, synthesize and utilize ALL provided context and search results to formulate accurate and relevant answers.**
+- If asked about price/details of "that event" or "it", always refer to recently mentioned events in the context.
+- For booking confirmations, be enthusiastic but keep it brief and to the point.
+- If information is genuinely missing or ambiguous, ask for clarification naturally and concisely.
+- **NEVER invent event details or make assumptions; only use information explicitly provided.**
+- Keep responses concise, ideally 1-3 sentences, focusing on direct answers.
 
 You'll receive:
-1. Recent conversation context
-2. Search results from our event database
-3. User's current message
+1. Recent conversation context (essential for continuity).
+2. Search results from our event database (factual information to integrate).
+3. User's current message.
 
-Respond naturally as if texting a friend."""
+Your response should be a direct, helpful reply, as if texting a friend who values clarity and efficiency."""
 
 # Conversation States
 STATE_AWAITING_PHONE = "AWAITING_PHONE"
@@ -51,7 +51,7 @@ class ConversationManager:
             await llm_provider.initialize()
             
             print("✅ Connected to Redis and LLM")
-            await self.send_reply("Hey! I'm here to help you find and book amazing events. What's your phone number?")
+            await self.send_reply("Hello! I'm your event assistant, ready to help you discover and book amazing experiences. Could you please share your 10-digit phone number?")
         
         except redis.exceptions.ConnectionError as e:
             print(f"❌ Redis connection error: {e}")
@@ -76,16 +76,19 @@ class ConversationManager:
             return
         
         self.transport.send(message + "\n")
-        
-        # Save to context if available
-        if self.context_manager:
-            self.context_manager.add_message("assistant", message)
-            await self.context_manager.save()
     
     async def send_typing_indicator(self, message: str = "Let me check that..."):
         """Send typing indicator for slow operations."""
         await self.send_reply(f"💭 {message}")
         await asyncio.sleep(0.3)  # Brief pause for natural feel
+    
+    def _clean_message(self, message: str) -> str:
+        """Clean up message by stripping whitespace and normalizing internal spaces."""
+        # Remove leading/trailing whitespace
+        cleaned_message = message.strip()
+        # Replace multiple spaces with a single space
+        cleaned_message = re.sub(r'\s+', ' ', cleaned_message)
+        return cleaned_message
     
     def extract_intent(self, message: str) -> Dict:
         """Extract user intent using patterns."""
@@ -136,7 +139,7 @@ class ConversationManager:
         if not results:
             return "No events found."
         
-        formatted = "Search Results:\n"
+        formatted = "Here are the top event search results:\n"
         for i, event in enumerate(results[:5], 1):
             formatted += f"{i}. {event['name']} ({event['id']}) - {event.get('date/days', 'TBA')}, {event.get('location', 'TBA')}, {event.get('price', 'TBA')}\n"
         return formatted
@@ -157,6 +160,9 @@ class ConversationManager:
     async def handle_message(self, message: str):
         """Handle incoming messages with intelligence."""
         
+        # Clean the incoming message
+        message = self._clean_message(message)
+        
         # Phone number collection
         if self.state == STATE_AWAITING_PHONE:
             if message.isdigit() and len(message) == 10:
@@ -167,7 +173,7 @@ class ConversationManager:
                 self.context_manager = ContextManager(self.redis_client, self.phone_number)
                 await self.context_manager.load()
                 
-                await self.send_reply("Perfect! What kind of events are you into? Concerts, food trails, adventure?")
+                await self.send_reply("Thank you! How may I assist you with events today?")
             else:
                 await self.send_reply("I need a 10-digit number. Can you try again?")
             return
@@ -260,7 +266,7 @@ class ConversationManager:
         await self.context_manager.save()
     
     async def _generate_llm_response(self, user_message: str, tool_context: Optional[str]):
-        """Generate response using LLM."""
+        """Generate response using LLM with streaming."""
         try:
             # Build messages
             messages = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -283,9 +289,15 @@ class ConversationManager:
             # Add current message
             messages.append({"role": "user", "content": user_message})
             
-            # Generate response
-            response = await llm_provider.generate(messages, max_tokens=150)
-            await self.send_reply(response)
+            full_response = ""
+            async for chunk in llm_provider.generate(messages, max_tokens=150):
+                full_response += chunk
+                await self.send_chunk(chunk)
+            
+            # Save full response to context
+            if self.context_manager:
+                self.context_manager.add_message("assistant", full_response)
+                await self.context_manager.save()
         
         except Exception as e:
             print(f"LLM error: {e}")
@@ -294,3 +306,11 @@ class ConversationManager:
                 await self.send_reply(tool_context)
             else:
                 await self.send_reply("Sorry, I'm having trouble understanding. Can you rephrase that?")
+
+    async def send_chunk(self, chunk: str):
+        """Send a partial message chunk to the client."""
+        if not self.transport or self.transport.readyState != "open":
+            print("⚠️  Transport not open")
+            return
+        
+        self.transport.send(chunk)

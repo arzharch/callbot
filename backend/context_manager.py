@@ -130,4 +130,8 @@ class ContextManager:
         if self.context.get("last_search_query"):
             parts.append(f"Last search: '{self.context['last_search_query']}'")
         
+        # Last action
+        if self.context.get("last_action"):
+            parts.append(f"Last user action: {self.context['last_action']}")
+        
         return "\n".join(parts) if parts else "No prior context"
