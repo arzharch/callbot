@@ -1,37 +1,38 @@
-import redis.asyncio as redis
 import asyncio
 import re
+import hashlib
+import json
 from typing import Optional, Dict
 from rag_engine import RAGEngine
 from context_manager import ContextManager
 from llm_provider import llm_provider
-from tools import book_ticket, cancel_ticket, get_my_tickets, format_event_brief
+from tools import book_ticket, cancel_ticket, get_my_tickets
 
-# System prompt for the AI
-SYSTEM_PROMPT = """You are Burraa's friendly and efficient event assistant. Your primary goal is to provide clear, precise, and helpful responses, always prioritizing the user's query and the provided context.
+# Shorter system prompt (<100 tokens)
+SYSTEM_PROMPT = """You're Burraa's voice assistant for event booking. Be conversational, concise (1-2 sentences), and natural.
 
 Guidelines:
-- Maintain a natural, conversational, and human-like tone (e.g., "Sure thing!", "Let me check that out", "Hmm, interesting").
-- **Crucially, synthesize and utilize ALL provided context and search results to formulate accurate and relevant answers.**
-- If asked about price/details of "that event" or "it", always refer to recently mentioned events in the context.
-- For booking confirmations, be enthusiastic but keep it brief and to the point.
-- If information is genuinely missing or ambiguous, ask for clarification naturally and concisely.
-- **NEVER invent event details or make assumptions; only use information explicitly provided.**
-- Keep responses concise, ideally 1-3 sentences, focusing on direct answers.
+- Use context and search results to answer accurately
+- Never invent details
+- For "that event" or "it", refer to recently mentioned events
+- Keep it brief for voice delivery
 
-You'll receive:
-1. Recent conversation context (essential for continuity).
-2. Search results from our event database (factual information to integrate).
-3. User's current message.
-
-Your response should be a direct, helpful reply, as if texting a friend who values clarity and efficiency."""
+You'll get context, search results, and the user's message."""
 
 # Conversation States
 STATE_AWAITING_PHONE = "AWAITING_PHONE"
 STATE_CONVERSING = "CONVERSING"
 
+# Response templates for simple intents (no LLM needed)
+TEMPLATES = {
+    "no_bookings": "You don't have any bookings yet. Want to explore some events?",
+    "invalid_phone": "I need a 10-digit number. Can you try again?",
+    "greeting": "Thank you! How may I assist you with events today?",
+    "no_results": "No events found. Try 'concerts', 'food trails', or 'adventure'."
+}
+
 class ConversationManager:
-    """Manages intelligent conversation with context awareness."""
+    """Manages intelligent conversation with caching and optimization."""
     
     def __init__(self, transport, rag_engine: RAGEngine, redis_client):
         self.transport = transport
@@ -40,55 +41,60 @@ class ConversationManager:
         self.phone_number = None
         self.redis_client = redis_client
         self.context_manager = None
+        self.cache_hits = 0
+        self.cache_misses = 0
         
     async def initialize(self):
         try:
-            # Verify Redis connection
-            if not self.redis_client or not await self.redis_client.ping():
-                raise redis.exceptions.ConnectionError("Redis client not available")
-
+            # Verify Redis (optional now)
+            redis_available = False
+            if self.redis_client:
+                try:
+                    redis_available = await self.redis_client.ping()
+                except Exception as e:
+                    print(f"⚠️ Redis unavailable: {e}. Running without caching.")
+            
             # Initialize LLM provider
             await llm_provider.initialize()
             
-            print("✅ Connected to Redis and LLM")
-            await self.send_reply("Hello! I'm your event assistant, ready to help you discover and book amazing experiences. Could you please share your 10-digit phone number?")
+            mode = "with caching" if redis_available else "stateless mode"
+            print(f"✅ Connected to LLM ({mode})")
+            await self.send_reply("Hello! I'm your event assistant. Could you share your 10-digit phone number?")
         
-        except redis.exceptions.ConnectionError as e:
-            print(f"❌ Redis connection error: {e}")
-            await self.send_reply("Oops, having connection issues. Try again in a bit?")
-            if self.transport:
-                await self.transport.close()
         except Exception as e:
             print(f"❌ Initialization error: {e}")
-            await self.send_reply("Something went wrong on my end. Please try again!")
+            await self.send_reply("Something went wrong. Please try again!")
             if self.transport:
                 await self.transport.close()
     
     async def cleanup(self):
         """Clean up resources."""
         await llm_provider.cleanup()
-        print("🧹 Cleaned up resources")
+        if self.cache_hits + self.cache_misses > 0:
+            hit_rate = self.cache_hits / (self.cache_hits + self.cache_misses) * 100
+            print(f"📊 Cache hit rate: {hit_rate:.1f}% ({self.cache_hits}/{self.cache_hits + self.cache_misses})")
     
     async def send_reply(self, message: str):
-        """Send message to client."""
+        """Send complete message to client."""
         if not self.transport or self.transport.readyState != "open":
-            print("⚠️  Transport not open")
             return
-        
-        self.transport.send(message + "\n")
+        self.transport.send(f"[COMPLETE]{message}\n")
     
-    async def send_typing_indicator(self, message: str = "Let me check that..."):
-        """Send typing indicator for slow operations."""
-        await self.send_reply(f"💭 {message}")
-        await asyncio.sleep(0.3)  # Brief pause for natural feel
+    async def send_chunk(self, chunk: str):
+        """Send streaming chunk to client."""
+        if not self.transport or self.transport.readyState != "open":
+            return
+        self.transport.send(f"[CHUNK]{chunk}")
+    
+    async def send_done(self):
+        """Signal streaming completion."""
+        if not self.transport or self.transport.readyState != "open":
+            return
+        self.transport.send("[DONE]\n")
     
     def _clean_message(self, message: str) -> str:
-        """Clean up message by stripping whitespace and normalizing internal spaces."""
-        # Remove leading/trailing whitespace
-        cleaned_message = message.strip()
-        # Replace multiple spaces with a single space
-        cleaned_message = re.sub(r'\s+', ' ', cleaned_message)
-        return cleaned_message
+        """Clean up message."""
+        return re.sub(r'\s+', ' ', message.strip())
     
     def extract_intent(self, message: str) -> Dict:
         """Extract user intent using patterns."""
@@ -106,7 +112,7 @@ class ConversationManager:
             quantity = int(quantity_match.group(1)) if quantity_match else 1
             return {"type": "book", "event_id": book_match.group(2), "quantity": quantity}
         
-        # Book intent with reference ("book that", "book it")
+        # Book intent with reference
         if re.search(r'\b(book|buy|purchase|reserve|get)\s+(that|it|this)', msg_lower):
             resolved_id = self.context_manager.resolve_reference(message) if self.context_manager else None
             if resolved_id:
@@ -119,48 +125,38 @@ class ConversationManager:
             return {"type": "my_tickets"}
         
         # Similar events intent
-        if re.search(r'\b(similar|like|related|comparable)', msg_lower):
+        if re.search(r'\b(similar|like|related)', msg_lower):
             resolved_id = self.context_manager.resolve_reference(message) if self.context_manager else None
             if resolved_id:
                 return {"type": "similar", "event_id": resolved_id}
         
-        # Price/details query about referenced event
+        # Details query
         if re.search(r'\b(price|cost|how much|details|info|tell me about)\b', msg_lower):
             if re.search(r'\b(that|it|this|first|second)', msg_lower):
                 resolved_id = self.context_manager.resolve_reference(message) if self.context_manager else None
                 if resolved_id:
                     return {"type": "details", "event_id": resolved_id}
         
-        # Default: search
         return {"type": "search", "query": message}
     
+    def format_event_brief(self, event: Dict) -> str:
+        """Format event in brief (token-optimized)."""
+        return f"{event['name']} | {event.get('date/days', 'TBA')} | {event.get('location', 'TBA')} | {event.get('price', 'TBA')}"
+    
     def format_search_results(self, results: list) -> str:
-        """Format search results for LLM."""
+        """Format search results concisely."""
         if not results:
-            return "No events found."
+            return TEMPLATES["no_results"]
         
-        formatted = "Here are the top event search results:\n"
-        for i, event in enumerate(results[:5], 1):
-            formatted += f"{i}. {event['name']} ({event['id']}) - {event.get('date/days', 'TBA')}, {event.get('location', 'TBA')}, {event.get('price', 'TBA')}\n"
+        formatted = "Found: "
+        for i, event in enumerate(results[:2]):
+            if i > 0:
+                formatted += " Also, "
+            formatted += f"{event['name']} on {event.get('date/days', 'TBA')} at {event.get('location', 'TBA')}. "
         return formatted
     
-    def format_event_details(self, event: Dict) -> str:
-        """Format single event details."""
-        if not event:
-            return "Event not found."
-        
-        return (f"Event: {event['name']} ({event['id']})\n"
-                f"Type: {event.get('type', 'N/A')}\n"
-                f"Date: {event.get('date/days', 'TBA')}\n"
-                f"Time: {event.get('time', 'TBA')}\n"
-                f"Location: {event.get('location', 'TBA')}\n"
-                f"Price: {event.get('price', 'TBA')}\n"
-                f"Description: {event.get('description', 'N/A')}")
-    
     async def handle_message(self, message: str):
-        """Handle incoming messages with intelligence."""
-        
-        # Clean the incoming message
+        """Handle incoming messages with optimization."""
         message = self._clean_message(message)
         
         # Phone number collection
@@ -169,68 +165,68 @@ class ConversationManager:
                 self.phone_number = message
                 self.state = STATE_CONVERSING
                 
-                # Initialize context manager
-                self.context_manager = ContextManager(self.redis_client, self.phone_number)
-                await self.context_manager.load()
+                if self.redis_client:
+                    self.context_manager = ContextManager(self.redis_client, self.phone_number)
+                    await self.context_manager.load()
                 
-                await self.send_reply("Thank you! How may I assist you with events today?")
+                await self.send_reply(TEMPLATES["greeting"])
             else:
-                await self.send_reply("I need a 10-digit number. Can you try again?")
+                await self.send_reply(TEMPLATES["invalid_phone"])
             return
         
-        # Main conversation logic
-        self.context_manager.add_message("user", message)
-        await self.context_manager.save()
+        # Add to context
+        if self.context_manager:
+            self.context_manager.add_message("user", message)
+            await self.context_manager.save()
         
         # Extract intent
         intent = self.extract_intent(message)
-        tool_result = None
-        needs_llm = True
         
-        # Handle different intents
+        # Handle intents with templates (no LLM)
         if intent["type"] == "cancel":
             result = await cancel_ticket(intent["booking_id"], self.phone_number)
-            if result["status"] == "success":
-                await self.send_reply(f"Done! {result['message']}")
-                needs_llm = False
-            else:
-                await self.send_reply(f"Hmm, {result['message']}")
-                needs_llm = False
+            await self.send_reply(f"{'Done! ' + result['message'] if result['status'] == 'success' else 'Hmm, ' + result['message']}")
+            return
         
         elif intent["type"] == "book":
-            await self.send_typing_indicator("Booking that for you...")
             result = await book_ticket(intent["event_id"], intent["quantity"], self.phone_number)
-            
             if result["status"] == "success":
                 booking = result["data"]
                 response = (f"Booked! 🎉 {booking['event_name']} on {booking['event_date']}. "
                            f"Total: ₹{booking['total_price']} for {booking['quantity']} ticket(s). "
-                           f"Booking ID: {booking['booking_id']}")
+                           f"ID: {booking['booking_id']}")
                 await self.send_reply(response)
-                self.context_manager.clear_pending_booking()
-                await self.context_manager.save()
-                needs_llm = False
+                if self.context_manager:
+                    self.context_manager.clear_pending_booking()
+                    await self.context_manager.save()
             else:
-                tool_result = result["message"]
+                await self.send_reply(result["message"])
+            return
         
         elif intent["type"] == "my_tickets":
             result = await get_my_tickets(self.phone_number)
             if result["status"] == "success":
                 bookings = result["data"]
-                response = "Your Bookings:\n"
-                for b in bookings:
-                    response += f"• {b['event_name']} - {b['event_date']} ({b['booking_id']})\n"
+                response = "Your Bookings:\n" + "\n".join(
+                    f"• {b['event_name']} - {b['event_date']} ({b['booking_id']})" for b in bookings
+                )
                 await self.send_reply(response)
-                needs_llm = False
             else:
-                await self.send_reply("You don't have any bookings yet. Want to explore some events?")
-                needs_llm = False
+                await self.send_reply(TEMPLATES["no_bookings"])
+            return
         
-        elif intent["type"] == "similar":
-            await self.send_typing_indicator("Finding similar events...")
-            similar = self.rag.find_similar_events(intent["event_id"], top_k=3)
+        # Intents requiring LLM (search, similar, details)
+        await self._handle_llm_intent(intent, message)
+    
+    async def _handle_llm_intent(self, intent: Dict, message: str):
+        """Handle intents that need LLM response."""
+        tool_result = None
+        
+        if intent["type"] == "similar":
+            similar = await self.rag.find_similar_events(intent["event_id"], top_k=3)
             if similar:
-                self.context_manager.set_mentioned_events([e['id'] for e in similar])
+                if self.context_manager:
+                    self.context_manager.set_mentioned_events([e['id'] for e in similar])
                 tool_result = self.format_search_results(similar)
             else:
                 tool_result = "Couldn't find similar events."
@@ -238,79 +234,95 @@ class ConversationManager:
         elif intent["type"] == "details":
             event = self.rag.get_event_by_id(intent["event_id"])
             if event:
-                tool_result = self.format_event_details(event)
-                self.context_manager.set_mentioned_events([event['id']])
+                tool_result = f"{event['name']} on {event.get('date/days', 'TBA')} at {event.get('time', 'TBA')} in {event.get('location', 'TBA')}. Price: {event.get('price', 'TBA')}."
+                if self.context_manager:
+                    self.context_manager.set_mentioned_events([event['id']])
             else:
                 tool_result = "Event not found."
         
         elif intent["type"] == "search":
-            # Determine if search is complex (needs typing indicator)
-            is_complex = len(message.split()) > 5 or "similar" in message.lower()
-            
-            if is_complex:
-                await self.send_typing_indicator("Searching for you...")
-            
-            self.context_manager.set_last_search(message)
-            results = self.rag.search(message, top_k=5)
-            
+            if self.context_manager:
+                self.context_manager.set_last_search(message)
+            results = await self.rag.search(message, top_k=5)
             if results:
-                self.context_manager.set_mentioned_events([e['id'] for e in results])
+                if self.context_manager:
+                    self.context_manager.set_mentioned_events([e['id'] for e in results])
                 tool_result = self.format_search_results(results)
             else:
-                tool_result = "No events found. Try 'concerts', 'food trails', or 'adventure'."
+                tool_result = TEMPLATES["no_results"]
         
-        # Generate LLM response if needed
-        if needs_llm:
-            await self._generate_llm_response(message, tool_result)
+        # Generate LLM response with caching
+        await self._generate_cached_response(message, tool_result, intent)
         
-        await self.context_manager.save()
+        if self.context_manager:
+            await self.context_manager.save()
     
-    async def _generate_llm_response(self, user_message: str, tool_context: Optional[str]):
-        """Generate response using LLM with streaming."""
-        try:
-            # Build messages
-            messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-            
-            # Add context summary
+    def _response_cache_key(self, message: str, tool_result: Optional[str], intent: Dict) -> str:
+        """Generate cache key for LLM response."""
+        context_str = ""
+        if self.context_manager:
+            context_str = str(self.context_manager.get_mentioned_events())
+        
+        hash_input = f"{intent['type']}:{message}:{tool_result}:{context_str}"
+        return f"llm:response:{hashlib.md5(hash_input.encode()).hexdigest()}"
+    
+    async def _generate_cached_response(self, message: str, tool_result: Optional[str], intent: Dict):
+        """Generate LLM response with Redis caching."""
+        # Try cache
+        if self.redis_client:
+            try:
+                cache_key = self._response_cache_key(message, tool_result, intent)
+                cached = await self.redis_client.get(cache_key)
+                if cached:
+                    self.cache_hits += 1
+                    print(f"💾 LLM cache hit")
+                    await self.send_reply(cached)
+                    if self.context_manager:
+                        self.context_manager.add_message("assistant", cached)
+                    return
+            except Exception as e:
+                print(f"Cache read error: {e}")
+        
+        self.cache_misses += 1
+        
+        # Build messages (minimal context)
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        
+        # Only add context if user references something ("that", "it")
+        if self.context_manager and any(ref in message.lower() for ref in ['that', 'it', 'this', 'first', 'second']):
             context_summary = self.context_manager.build_context_summary()
-            if context_summary and context_summary != "No prior context":
+            if context_summary != "No prior context":
                 messages.append({"role": "system", "content": f"Context: {context_summary}"})
-            
-            # Add recent history (last 4 turns)
-            history = self.context_manager.get_conversation_history(limit=4)
-            for msg in history:
-                if msg["role"] in ["user", "assistant"]:
-                    messages.append({"role": msg["role"], "content": msg["content"]})
-            
-            # Add tool results
-            if tool_context:
-                messages.append({"role": "system", "content": f"Tool Results:\n{tool_context}"})
-            
-            # Add current message
-            messages.append({"role": "user", "content": user_message})
-            
-            full_response = ""
-            async for chunk in llm_provider.generate(messages, max_tokens=150):
+        
+        # Add tool results
+        if tool_result:
+            messages.append({"role": "system", "content": f"Results: {tool_result}"})
+        
+        # Add current message
+        messages.append({"role": "user", "content": message})
+        
+        # Stream response
+        full_response = ""
+        try:
+            async for chunk in llm_provider.generate(messages, max_tokens=120):
                 full_response += chunk
                 await self.send_chunk(chunk)
             
-            # Save full response to context
+            await self.send_done()
+            
+            # Cache response
+            if self.redis_client and full_response:
+                try:
+                    cache_key = self._response_cache_key(message, tool_result, intent)
+                    await self.redis_client.set(cache_key, full_response, ex=300)  # 5min TTL
+                except Exception as e:
+                    print(f"Cache write error: {e}")
+            
+            # Save to context
             if self.context_manager:
                 self.context_manager.add_message("assistant", full_response)
-                await self.context_manager.save()
         
         except Exception as e:
             print(f"LLM error: {e}")
-            # Fallback to simple response
-            if tool_context:
-                await self.send_reply(tool_context)
-            else:
-                await self.send_reply("Sorry, I'm having trouble understanding. Can you rephrase that?")
-
-    async def send_chunk(self, chunk: str):
-        """Send a partial message chunk to the client."""
-        if not self.transport or self.transport.readyState != "open":
-            print("⚠️  Transport not open")
-            return
-        
-        self.transport.send(chunk)
+            fallback = tool_result if tool_result else "Sorry, I'm having trouble. Can you rephrase?"
+            await self.send_reply(fallback)

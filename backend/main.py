@@ -17,7 +17,7 @@ KNOWLEDGE_BASE_PATH = os.path.join(ROOT, 'burraa_catalog.txt')
 REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.environ.get("REDIS_PORT", 6379))
 
-# Global RAG engine and Redis client (initialized once at startup)
+# Global instances
 rag_engine = None
 redis_client = None
 pcs = set()
@@ -31,7 +31,7 @@ async def init_rag():
     
     print("🚀 Initializing RAG engine...")
     
-    # Parse catalog and save as JSON for RAG
+    # Parse catalog and save as JSON
     kb_data = parse_catalog_to_json()
     json_path = os.path.join(ROOT, 'knowledge_base.json')
     
@@ -45,16 +45,18 @@ async def init_rag():
     print("✅ RAG engine ready!")
 
 async def init_redis(app):
-    """Initialize Redis client at startup."""
+    """Initialize Redis client (optional)."""
     global redis_client
     try:
         redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
         await redis_client.ping()
+        rag_engine.set_redis(redis_client)  # Enable RAG caching
         app['redis_client'] = redis_client
-        print("✅ Connected to Redis!")
-    except redis.exceptions.ConnectionError as e:
-        print(f"❌ Redis connection error: {e}")
-        print("⚠️  Context management will be disabled.")
+        print("✅ Connected to Redis (caching enabled)")
+    except Exception as e:
+        print(f"⚠️  Redis unavailable: {e}")
+        print("ℹ️  Running in stateless mode (no caching)")
+        app['redis_client'] = None
 
 # --- HTTP Route Handlers ---
 
@@ -99,7 +101,7 @@ async def offer(request):
 
     log_info("Created for %s", request.remote)
 
-    # Create a conversation manager with shared RAG engine and Redis client
+    # Create conversation manager
     conversation_manager = ConversationManager(
         transport=None, 
         rag_engine=rag_engine, 
@@ -130,7 +132,6 @@ async def offer(request):
     async def on_connectionstatechange():
         log_info("Connection state is %s", pc.connectionState)
         if pc.connectionState in ["failed", "closed", "disconnected"]:
-            # Cleanup conversation manager
             if pc_id in conversation_managers:
                 await conversation_managers[pc_id].cleanup()
                 del conversation_managers[pc_id]
@@ -158,18 +159,15 @@ async def offer(request):
     )
 
 async def on_shutdown(app):
-    """Closes all active peer connections and cleans up resources on shutdown."""
-    # Cleanup all conversation managers
+    """Closes all active peer connections and cleans up resources."""
     cleanup_tasks = [manager.cleanup() for manager in conversation_managers.values()]
     await asyncio.gather(*cleanup_tasks, return_exceptions=True)
     conversation_managers.clear()
     
-    # Close all peer connections
     coros = [pc.close() for pc in pcs]
     await asyncio.gather(*coros)
     pcs.clear()
 
-    # Close Redis client
     if redis_client:
         await redis_client.close()
         print("🔌 Redis client closed.")
@@ -215,13 +213,14 @@ if __name__ == "__main__":
         cors.add(route)
 
     print("=" * 60)
-    print("🎭 BURRAA EVENT CHATBOT SERVER")
+    print("🎭 BURRAA EVENT CHATBOT SERVER (OPTIMIZED)")
     print("=" * 60)
-    print("📍 Server: http://0.0.0.0:8080")
+    print("🌐 Server: http://0.0.0.0:8080")
     print("🤖 LLM Provider: Check environment (OLLAMA/GEMINI)")
+    print("⚡ Features: Redis caching, streaming, token optimization")
     print("=" * 60)
     print("\n⚙️  Pre-flight Checklist:")
-    print("   ✓ Redis running? (redis-server)")
+    print("   ✓ Redis running? (redis-server) [OPTIONAL]")
     print("   ✓ Ollama running? (ollama serve)")
     print("   ✓ Mistral pulled? (ollama pull mistral)")
     print("   ✓ OR Gemini API key set? (export GEMINI_API_KEY=...)")

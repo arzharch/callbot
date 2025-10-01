@@ -6,21 +6,20 @@ import google.generativeai as genai
 import json
 
 # Configuration
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")  # "ollama" or "gemini"
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")
 OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://localhost:11434/api/chat")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "mistral")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
 class LLMProvider:
-    """Unified interface for Ollama and Gemini."""
+    """Unified interface for Ollama and Gemini with streaming."""
     
     def __init__(self, provider: str = None):
         self.provider = provider or LLM_PROVIDER
         self.session = None
         self.gemini_model = None
         
-        # Initialize Gemini if needed
         if self.provider == "gemini" and GEMINI_API_KEY:
             genai.configure(api_key=GEMINI_API_KEY)
             self.gemini_model = genai.GenerativeModel(GEMINI_MODEL)
@@ -55,7 +54,7 @@ class LLMProvider:
             payload = {
                 "model": OLLAMA_MODEL,
                 "messages": messages,
-                "stream": True,  # Enable streaming
+                "stream": True,
                 "options": {
                     "temperature": 0.7,
                     "num_predict": max_tokens
@@ -69,17 +68,14 @@ class LLMProvider:
             ) as response:
                 if response.status == 200:
                     async for chunk in response.content.iter_any():
-                        # Ollama sends JSON objects per chunk
                         try:
                             data = chunk.decode('utf-8')
-                            # Each chunk might contain multiple JSON objects or partial ones
                             for line in data.splitlines():
                                 if line.strip():
                                     json_data = json.loads(line)
-                                    if "content" in json_data['message']:
+                                    if "message" in json_data and "content" in json_data['message']:
                                         yield json_data['message']['content']
                         except json.JSONDecodeError:
-                            # Handle incomplete JSON objects or non-JSON data
                             pass
                 else:
                     error_text = await response.text()
@@ -96,7 +92,7 @@ class LLMProvider:
             yield "I encountered an error. Please try again."
     
     async def _generate_gemini(self, messages: List[Dict], max_tokens: int):
-        """Generate using Gemini with streaming."""
+        """Generate using Gemini with streaming (fixed)."""
         if not self.gemini_model:
             yield "Gemini API not configured. Please set GEMINI_API_KEY."
             return
@@ -108,21 +104,22 @@ class LLMProvider:
             
             for msg in messages:
                 if msg["role"] == "system":
-                    system_prompt = msg["content"]
+                    system_prompt += msg["content"] + "\n"
                 elif msg["role"] == "user":
                     gemini_messages.append({"role": "user", "parts": [msg["content"]]})
                 elif msg["role"] == "assistant":
                     gemini_messages.append({"role": "model", "parts": [msg["content"]]})
             
             # Start chat with history
-            chat = self.gemini_model.start_chat(history=gemini_messages[:-1])
+            chat = self.gemini_model.start_chat(history=gemini_messages[:-1] if len(gemini_messages) > 1 else [])
             
             # Get last user message
             last_message = gemini_messages[-1]["parts"][0] if gemini_messages else ""
+            if system_prompt:
+                last_message = f"{system_prompt}\n{last_message}"
             
-            # Generate response with streaming
-            response_stream = await asyncio.to_thread(
-                chat.send_message,
+            # Generate response with streaming (native sync)
+            response_stream = chat.send_message(
                 last_message,
                 generation_config=genai.types.GenerationConfig(
                     max_output_tokens=max_tokens,
@@ -131,9 +128,12 @@ class LLMProvider:
                 stream=True
             )
             
+            # Stream chunks (sync iteration wrapped in executor)
             for chunk in response_stream:
                 if chunk.text:
                     yield chunk.text
+                # Yield control back to event loop
+                await asyncio.sleep(0)
         
         except Exception as e:
             print(f"Gemini error: {e}")
