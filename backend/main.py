@@ -2,16 +2,59 @@ import asyncio
 import json
 import os
 import uuid
+import redis.asyncio as redis
 from aiohttp import web
 import aiohttp_cors
 from aiortc import RTCPeerConnection, RTCSessionDescription
 from bot_logic import ConversationManager
+from rag_engine import RAGEngine
+from tools import parse_catalog_to_json
 
 # --- Setup ---
 ROOT = os.path.dirname(__file__)
 FRONTEND_PATH = os.path.abspath(os.path.join(ROOT, '../frontend'))
+KNOWLEDGE_BASE_PATH = os.path.join(ROOT, 'burraa_catalog.txt')
+REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.environ.get("REDIS_PORT", 6379))
+
+# Global RAG engine and Redis client (initialized once at startup)
+rag_engine = None
+redis_client = None
 pcs = set()
-conversation_managers = {}  # Track managers for cleanup
+conversation_managers = {}
+
+# --- Startup Initialization ---
+
+async def init_rag():
+    """Initialize RAG engine at startup."""
+    global rag_engine
+    
+    print("🚀 Initializing RAG engine...")
+    
+    # Parse catalog and save as JSON for RAG
+    kb_data = parse_catalog_to_json()
+    json_path = os.path.join(ROOT, 'knowledge_base.json')
+    
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(kb_data, f, indent=2, ensure_ascii=False)
+    
+    # Build FAISS index
+    rag_engine = RAGEngine(json_path)
+    rag_engine.build_index()
+    
+    print("✅ RAG engine ready!")
+
+async def init_redis(app):
+    """Initialize Redis client at startup."""
+    global redis_client
+    try:
+        redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+        await redis_client.ping()
+        app['redis_client'] = redis_client
+        print("✅ Connected to Redis!")
+    except redis.exceptions.ConnectionError as e:
+        print(f"❌ Redis connection error: {e}")
+        print("⚠️  Context management will be disabled.")
 
 # --- HTTP Route Handlers ---
 
@@ -56,8 +99,12 @@ async def offer(request):
 
     log_info("Created for %s", request.remote)
 
-    # Create a conversation manager for this connection
-    conversation_manager = ConversationManager(transport=None)
+    # Create a conversation manager with shared RAG engine and Redis client
+    conversation_manager = ConversationManager(
+        transport=None, 
+        rag_engine=rag_engine, 
+        redis_client=request.app.get('redis_client')
+    )
     conversation_managers[pc_id] = conversation_manager
 
     @pc.on("datachannel")
@@ -121,12 +168,24 @@ async def on_shutdown(app):
     coros = [pc.close() for pc in pcs]
     await asyncio.gather(*coros)
     pcs.clear()
-    print("All peer connections closed and resources cleaned up.")
+
+    # Close Redis client
+    if redis_client:
+        await redis_client.close()
+        print("🔌 Redis client closed.")
+
+    print("🧹 All peer connections closed and resources cleaned up.")
+
+async def on_startup(app):
+    """Initialize services on server startup."""
+    await init_rag()
+    await init_redis(app)
 
 # --- Main Application Setup ---
 
 if __name__ == "__main__":
     app = web.Application()
+    app.on_startup.append(on_startup)
     app.on_shutdown.append(on_shutdown)
 
     # Setup routes
@@ -155,7 +214,18 @@ if __name__ == "__main__":
     for route in list(app.router.routes()):
         cors.add(route)
 
-    print("Starting server on http://0.0.0.0:8080")
-    print("Make sure Ollama is running: ollama serve")
-    print("Make sure Mistral model is pulled: ollama pull mistral")
+    print("=" * 60)
+    print("🎭 BURRAA EVENT CHATBOT SERVER")
+    print("=" * 60)
+    print("📍 Server: http://0.0.0.0:8080")
+    print("🤖 LLM Provider: Check environment (OLLAMA/GEMINI)")
+    print("=" * 60)
+    print("\n⚙️  Pre-flight Checklist:")
+    print("   ✓ Redis running? (redis-server)")
+    print("   ✓ Ollama running? (ollama serve)")
+    print("   ✓ Mistral pulled? (ollama pull mistral)")
+    print("   ✓ OR Gemini API key set? (export GEMINI_API_KEY=...)")
+    print("=" * 60)
+    print("\n🚀 Starting server...\n")
+    
     web.run_app(app, access_log=None, host="0.0.0.0", port=8080)

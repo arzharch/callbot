@@ -1,0 +1,7 @@
+Error loading context: 'NoneType' object has no attribute 'get'
+Error saving context: 'NoneType' object has no attribute 'set'
+PeerConnection(ed835af0-56f4-44ab-ac1a-b80c3693d580) Message from client: tell me a joke
+Error saving context: 'NoneType' object has no attribute 'set'
+Ollama API error: 500 - {"error":"llama runner process has terminated: error loading model: unable to allocate CUDA0 buffer"}
+Error saving context: 'NoneType' object has no attribute 'set'
+Error saving context: 'NoneType' object has no attribute 'set
